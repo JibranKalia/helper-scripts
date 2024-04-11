@@ -1,0 +1,100 @@
+#!/usr/bin/env ruby
+require 'optparse'
+require 'tmpdir'
+require 'find'
+require 'pathname'
+require 'thread'
+
+TEXT_LIMIT = 100_000
+
+def parse_options
+  options = {prompt: '', stdin: false}
+  OptionParser.new do |opts|
+    opts.banner = "Usage: prepare_ai_prompt.rb [options]"
+
+    opts.on("--prompt PROMPT", "The AI prompt, limited to a small amount of text.") do |p|
+      options[:prompt] = p
+    end
+
+    opts.on("--stdin", "Accept file names from standard input instead of searching.") do
+      options[:stdin] = true
+    end
+  end.parse!
+  options
+end
+
+def read_files_stdin
+  files = []
+  STDIN.each_line do |line|
+    files << line.chomp
+  end
+  files
+end
+
+# Function to perform a breadth-first search of files with specific extensions
+def find_files_bfs(directory, extensions)
+  queue = Queue.new
+  queue.push(Pathname.new(directory))
+  matched_files = []
+
+  while !queue.empty?
+    current_path = queue.pop
+
+    if current_path.directory?
+      current_path.each_child do |child|
+        queue.push(child)
+      end
+    elsif current_path.file?  && extensions.include?(current_path.extname.delete('.'))
+      matched_files << current_path.to_s
+    end
+  end
+  matched_files
+end
+
+# Function to read files and append their contents to a temporary file
+def process_files(files, temp_file_path)
+  File.open(temp_file_path, 'w') do |temp_file|
+    files.each do |file|
+      next unless File.file?(file) && !File.zero?(file)
+      content = File.read(file)
+      filename = File.basename(file)
+
+      # Append the file content to the temp file, followed by a newline
+      output = "\n\"\"\"\n// #{filename}\n\n#{content}\n\"\"\"\n"
+      temp_file.write(output)
+    end
+  end
+end
+
+# Function to copy text to the clipboard
+def copy_to_clipboard(text)
+  IO.popen('pbcopy', 'w') { |clip| clip.puts text }
+end
+
+
+def main
+  # Main script execution
+  options = parse_options
+  directory = Pathname.new(Dir.pwd)
+  extensions = ["ts", "py", "rb", "go"]
+
+  is_stdin = $stdin.tty? || options[:stdin]
+
+  files = is_stdin ? read_files_stdin : find_files_bfs(Dir.pwd, extensions)
+
+  # Create a temporary file and process the files
+  temp_file_path = Dir::Tmpname.create("combined_contents") {}
+  process_files(files, temp_file_path)
+
+  # Update prompt content with file contents
+  prompt_content = options[:prompt] + File.read(temp_file_path)
+  File.delete(temp_file_path)
+
+  # Ensure the content does not exceed the limit and copy to clipboard
+  clipboard_content = prompt_content.length > TEXT_LIMIT ? prompt_content[0...TEXT_LIMIT] : prompt_content
+  copy_to_clipboard(clipboard_content)
+
+  puts "\nThe AI prompt has been prepared and copied to the clipboard."
+end
+
+main
