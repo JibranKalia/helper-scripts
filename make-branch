@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+
+require "Open3"
+
+issue_number = ARGV[0].to_i
+
+title, s = Open3.capture2("gh issue view #{issue_number} --json 'title' --jq '.title'")
+
+name = "jibrank.issue-#{issue_number}-#{title}".downcase.tr(" ", "-")
+
+title, s = Open3.capture2("git checkout -b #{name}")
