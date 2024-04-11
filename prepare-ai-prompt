@@ -73,20 +73,17 @@ end
 
 
 def main
-  # Main script execution
   options = parse_options
   directory = Pathname.new(Dir.pwd)
   extensions = ["ts", "py", "rb", "go"]
 
-  is_stdin = $stdin.tty? || options[:stdin]
+  is_stdin = options[:stdin]
 
   files = is_stdin ? read_files_stdin : find_files_bfs(Dir.pwd, extensions)
 
-  # Create a temporary file and process the files
   temp_file_path = Dir::Tmpname.create("combined_contents") {}
   process_files(files, temp_file_path)
 
-  # Update prompt content with file contents
   prompt_content = options[:prompt] + File.read(temp_file_path)
   File.delete(temp_file_path)
 
